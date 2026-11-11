@@ -240,6 +240,7 @@ export default function App() {
               title: data.title || item.title,
               channel: data.channel || data.uploader || item.channel,
               uploader: data.uploader || item.uploader,
+              description: data.description || item.description,
               artist: isUserEdited ? item.artist : (data.artist ?? item.artist),
               track: isUserEdited ? item.track : (data.track ?? item.track),
               genre: isUserEdited ? item.genre : (data.genre ?? item.genre),

@@ -153,7 +153,7 @@ export const HealthModal: React.FC<HealthModalProps> = ({ isOpen, onClose }) => 
               <div className="font-medium text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>Cấu hình chống chặn bot:</span>
               </div>
-              <div className="flex items-center gap-4 text-[11px]">
+              <div className="flex items-center gap-4 text-[11px] flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${data.hasCookies ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                   <span>Cookies: {data.hasCookies ? 'Đã bật' : 'Chưa cấu hình'}</span>
@@ -161,6 +161,12 @@ export const HealthModal: React.FC<HealthModalProps> = ({ isOpen, onClose }) => 
                 <div className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${data.hasProxy ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                   <span>Proxy: {data.hasProxy ? 'Đã bật' : 'Chưa cấu hình'}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${data.geminiConfigured ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                  <span>
+                    Gemini AI: {data.geminiConfigured ? `Sẵn sàng (${data.geminiModel || 'gemini-3.8-flash'})` : 'Chưa có API key (tùy chọn)'}
+                  </span>
                 </div>
               </div>
             </div>

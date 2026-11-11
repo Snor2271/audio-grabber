@@ -16,6 +16,7 @@ import {
   FileText,
   ArrowLeftRight,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 import { JobItem, formatDuration, formatFileSize } from '../utils/youtube';
 import {
@@ -51,6 +52,8 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
   const [showDetails, setShowDetails] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [isUserEdited, setIsUserEdited] = useState(Boolean(item.isUserEdited));
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const isVideo = item.format.startsWith('video');
   const defaultExt = isVideo ? '.mp4' : '.m4a';
@@ -223,6 +226,49 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
     setIsLowConfidence(false);
     if (onUpdateName) {
       onUpdateName(item.id, newArtist, newTrack, genre, true);
+    }
+  };
+
+  // ✨ Call Gemini AI to suggest artist, song title, and genres
+  const handleAiSuggest = async () => {
+    setIsAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch('/api/suggest-name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          channel: item.channel || item.uploader || '',
+          description: item.description || '',
+          genreOptions: GENRE_OPTIONS,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Không thể lấy gợi ý từ AI.');
+      }
+
+      // If AI returns a non-empty field, use it; otherwise preserve existing value
+      const newArtist = data.artist?.trim() ? data.artist.trim() : artist;
+      const newTrack = data.song?.trim() ? data.song.trim() : track;
+      const newGenre = data.primaryGenre?.trim() ? data.primaryGenre.trim() : genre;
+
+      setArtist(newArtist);
+      setTrack(newTrack);
+      setGenre(newGenre);
+      setIsCustomGenre(!GENRE_OPTIONS.includes(newGenre as any));
+      setIsUserEdited(true);
+      setIsLowConfidence(false);
+
+      if (onUpdateName) {
+        onUpdateName(item.id, newArtist, newTrack, newGenre, true);
+      }
+    } catch (err: any) {
+      setAiError(err.message || 'Lỗi khi gọi gợi ý AI.');
+    } finally {
+      setIsAiLoading(false);
     }
   };
 
@@ -470,8 +516,27 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                 </div>
               </div>
 
+              {/* AI Error message banner if any */}
+              {aiError && (
+                <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>{aiError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAiError(null)}
+                    className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 font-bold px-1.5 py-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs transition-colors shrink-0"
+                    title="Đóng thông báo"
+                    aria-label="Đóng thông báo"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {/* Filename Live Preview */}
-              <div className="p-2.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40 flex items-center justify-between gap-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                   <span className="font-semibold text-slate-700 dark:text-slate-300 shrink-0">
@@ -482,14 +547,27 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleAutoTitleCase}
-                  title="Viết hoa chữ cái đầu các từ theo chuẩn tiếng Việt"
-                  className="shrink-0 text-[10px] px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors"
-                >
-                  Viết hoa chuẩn
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={handleAiSuggest}
+                    disabled={isAiLoading}
+                    title="Tách tên tác giả, bài hát và thể loại tự động bằng Gemini AI"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:from-indigo-600 hover:to-pink-700 active:scale-95 text-white text-[11px] font-semibold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    <Sparkles className={`w-3 h-3 ${isAiLoading ? 'animate-spin' : ''}`} />
+                    <span>{isAiLoading ? 'AI đang phân tích...' : '✨ Gợi ý bằng AI'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAutoTitleCase}
+                    title="Viết hoa chữ cái đầu các từ theo chuẩn tiếng Việt"
+                    className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors"
+                  >
+                    Viết hoa chuẩn
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -22,6 +22,7 @@ export interface JobItem {
   title: string;
   channel?: string;
   uploader?: string;
+  description?: string;
   artist?: string;
   track?: string;
   genre?: string;
@@ -54,6 +55,8 @@ export interface SystemHealth {
   hasCookiesFromBrowser?: boolean;
   cookiesFromBrowser?: string | null;
   hasProxy: boolean;
+  geminiConfigured?: boolean;
+  geminiModel?: string;
 }
 
 // Regex to capture YouTube video ID from various URL patterns
