@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+coverage/
+
+# AI Studio artifacts & Workspace metadata
+.aistudio/
+metadata.json
+
+# IDE & Editor
+.vscode/
+
+# Environment variables & Sensitive data
+.env*
+!.env.example
+cookies.txt
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
