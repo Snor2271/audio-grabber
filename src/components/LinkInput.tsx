@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { PlusCircle, AlertCircle, CheckCircle2, Clipboard, Sparkles } from 'lucide-react';
+import { PlusCircle, AlertCircle, CheckCircle2, Clipboard, Sparkles, Sliders } from 'lucide-react';
 import { parseMultipleLinks, DownloadFormat } from '../utils/youtube';
 
 interface LinkInputProps {
@@ -122,9 +122,11 @@ export const LinkInput: React.FC<LinkInputProps> = ({
           <button
             type="button"
             onClick={onOpenSettings}
-            className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+            aria-label="Chỉnh sửa tải xuống"
+            title="Chỉnh sửa tải xuống"
+            className="min-w-[44px] min-h-[44px] p-2 flex items-center justify-center rounded-lg text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800 transition-all cursor-pointer active:scale-95 motion-reduce:active:scale-100"
           >
-            Đổi định dạng
+            <Sliders className="w-4 h-4" />
           </button>
         </div>
 

@@ -12,12 +12,16 @@
 - [Điều kiện tiên quyết](#điều-kiện-tiên-quyết)
 - [Hướng 1: Người dùng phổ thông (chạy bằng file .bat)](#hướng-1-người-dùng-phổ-thông-chạy-bằng-file-bat)
 - [Hướng 2: Lập trình viên / IT (phát triển trong VS Code)](#hướng-2-lập-trình-viên--it-phát-triển-trong-vs-code)
-- [Đặt tên file & gợi ý bằng AI](#đặt-tên-file--gợi-ý-bằng-ai)
+- [Đặt tên file theo mẫu](#đặt-tên-file-theo-mẫu)
+- [Dùng Gemini để đổi tên](#dùng-gemini-để-đổi-tên)
+- [Thêm khóa Gemini API](#thêm-khóa-gemini-api)
 - [Mở từ iPhone / Android qua Wi-Fi](#mở-từ-iphone--android-qua-wi-fi)
 - [Cấu hình Cookie chống chặn bot YouTube](#cấu-hình-cookie-chống-chặn-bot-youtube)
 - [Cách lưu file .m4a vào iPhone](#cách-lưu-file-m4a-vào-iphone)
 - [Biến môi trường](#biến-môi-trường)
 - [Khắc phục sự cố](#khắc-phục-sự-cố)
+- [So sánh với EzConv](#so-sánh-với-ezconv)
+- [Bảng vinh danh](#bảng-vinh-danh)
 - [Giấy phép & miễn trừ trách nhiệm](#giấy-phép--miễn-trừ-trách-nhiệm)
 
 ---
@@ -28,7 +32,10 @@
 - **Giữ nguyên chất lượng gốc**: ưu tiên luồng `.m4a` (AAC) có sẵn của YouTube, không mã hóa lại. Nếu video không có m4a, FFmpeg tự chuyển sang AAC 128k.
 - **Hàng đợi thông minh**: chạy tối đa 2 tác vụ song song, hàng đợi tối đa 20 mục, một bài lỗi không làm dừng các bài khác.
 - **Nhận diện nhiều dạng link**: `youtube.com/watch?v=...`, `youtu.be/...`, `m.youtube.com`, `music.youtube.com`, `youtube.com/shorts/...`; tự bỏ tham số danh sách phát `list=...`.
-- **Đặt tên file theo mẫu**: tự gợi ý Tác giả / Tên bài / Thể loại, cho phép sửa trước khi tải, có xem trước tên file.
+- **Đặt tên file theo mẫu ngay từ đầu**: tự gợi ý Tác giả / Tên bài / Thể loại, cho phép sửa trước khi tải, có xem trước tên file.
+- **Gemini đổi tên hàng loạt (tùy chọn)**: một nút xử lý cả danh sách chờ trong một lần; từng bài vẫn có tùy chọn riêng ẩn trong menu mũi tên xuống.
+- **Giao diện Sáng / Tối / Theo hệ thống**: chuyển mượt, nhớ lựa chọn của bạn.
+- **Câu hỏi thường gặp và bảng vinh danh** ngay trong ứng dụng.
 - **Tùy chọn video**: có thể chuyển sang tải video `.mp4` (720p / 1080p) trong phần Cài đặt.
 - **Kiểm tra hệ thống**: nút "Hệ thống" cho biết yt-dlp, FFmpeg, Node.js đã sẵn sàng chưa.
 - **Tự dọn dẹp**: file tạm được xóa sau 15 phút.
@@ -85,6 +92,7 @@ brew install node yt-dlp ffmpeg
 2. Cài Node.js, yt-dlp và FFmpeg theo mục [Điều kiện tiên quyết](#điều-kiện-tiên-quyết).
 3. Nhấp đúp file **`setup.bat`**. File sẽ tự: tạo file cấu hình `.env`, cài thư viện (`npm install --legacy-peer-deps`) và build giao diện (`npm run build`).
 4. Khi thấy dòng **"CAI DAT HOAN TAT THANH CONG!"**, nhấn phím bất kỳ để đóng.
+5. *(Tùy chọn)* Muốn dùng Gemini đổi tên, nhấp đúp **`them-api-key.bat`** và làm theo menu. Xem mục [Thêm khóa Gemini API](#thêm-khóa-gemini-api).
 
 > Nếu Windows hiện cảnh báo vì file tải từ Internet, chọn **More info → Run anyway**. Bạn có thể mở file `.bat` bằng Notepad để xem nội dung trước khi chạy.
 
@@ -113,12 +121,16 @@ brew install node yt-dlp ffmpeg
 ├── src/
 │   ├── main.tsx            # Điểm khởi tạo React
 │   ├── App.tsx             # Giao diện chính, polling trạng thái hàng đợi
-│   ├── components/         # Header, LinkInput, QueueItemCard, SettingsModal, HealthModal...
+│   ├── components/         # Header, LinkInput, QueueItemCard, SettingsModal, HealthModal, ThemeToggle, FAQ, Credits...
+│   ├── data/
+│   │   ├── faq.ts          # Nội dung "Câu hỏi thường gặp" (sửa tại đây)
+│   │   └── credits.ts      # Nội dung "Bảng vinh danh" (sửa tại đây)
 │   └── utils/
 │       ├── youtube.ts      # Phân tích link, chuẩn hóa tên file
 │       └── youtube.test.ts # Kiểm thử (node:test)
 ├── bin/                    # (tùy chọn) đặt yt-dlp.exe tại đây nếu không dùng PATH
 ├── setup.bat / start.bat   # Cài đặt / khởi động nhanh trên Windows
+├── them-api-key.bat        # Thêm, kiểm tra, xóa khóa Gemini trong .env (Windows)
 ├── .env.example            # Mẫu biến môi trường
 ├── vite.config.ts
 ├── tsconfig.json
@@ -165,24 +177,67 @@ NODE_ENV=production npm run start
 
 ---
 
-## Đặt tên file & gợi ý bằng AI
+## Đặt tên file theo mẫu
 
 Mẫu tên file: `Tên Tác Giả - Tên Bài Hát (Thể loại).đuôi`
 
 - Bản gốc **không** có phần trong ngoặc: `Tên Tác Giả - Tên Bài Hát.m4a`
 - Có thể loại: `Tên Tác Giả - Tên Bài Hát (Drill).m4a`
 
-Khi bài ở trạng thái **Sẵn sàng**, bạn thấy 3 ô **Tác giả**, **Tên bài**, **Thể loại** đã được điền gợi ý và dòng xem trước tên file. Hãy kiểm tra và sửa nếu cần trước khi bấm **Tải về**. Trong **Cài đặt** có thể chọn thể loại mặc định, bật/tắt tự đoán thể loại và bật/tắt viết hoa chữ cái đầu mỗi từ. Gợi ý tự động dựa trên tiêu đề video và tên kênh nên **không phải lúc nào cũng đúng**; tiêu đề YouTube không có chuẩn chung.
+Khi bài ở trạng thái **Sẵn sàng**, bạn thấy 3 ô **Tác giả**, **Tên bài**, **Thể loại** đã được điền gợi ý, nút ⇄ để đổi chỗ Tác giả và Tên bài, và dòng xem trước tên file. Hãy kiểm tra và sửa nếu cần trước khi bấm **Tải về**. Trong **Cài đặt** có thể chọn thể loại mặc định, bật/tắt tự đoán thể loại và bật/tắt viết hoa chữ cái đầu mỗi từ.
 
-### Nút "✨ Gợi ý bằng AI" (tùy chọn)
+Gợi ý tự động dựa trên tiêu đề video và tên kênh nên **không phải lúc nào cũng đúng**; tiêu đề YouTube không có chuẩn chung. Khi gặp tiêu đề lộn xộn, hãy dùng Gemini (mục dưới).
 
-Nút này nhờ Gemini tách tên tác giả, tên bài và thể loại từ tiêu đề lộn xộn. Nút chỉ chạy khi bạn bấm.
+---
 
-1. Tạo khóa API tại Google AI Studio.
-2. Thêm vào file `.env`: `GEMINI_API_KEY="khoá-của-bạn"` rồi khởi động lại ứng dụng.
-3. Mô hình mặc định là `gemini-3.8-flash`, có thể đổi bằng biến `GEMINI_MODEL`.
+## Dùng Gemini để đổi tên
 
-Khi bấm nút, **chỉ tiêu đề, tên kênh và đoạn đầu mô tả video** được gửi tới Google. Khóa API nằm ở máy chủ, không gửi ra trình duyệt. Mỗi lần gọi dùng rất ít token nên chi phí nhỏ, nhưng bạn tự chịu hạn mức và chi phí của khóa mình. Không có khóa thì ứng dụng vẫn hoạt động bình thường với gợi ý theo luật.
+Tính năng này là **tùy chọn**. Không có khóa Gemini, ứng dụng vẫn tải nhạc và đặt tên theo luật bình thường.
+
+- **Cả danh sách:** bấm nút **✨ Đổi tên cả danh sách bằng Gemini** bên dưới hàng đợi. Ứng dụng gửi **một yêu cầu duy nhất** cho tất cả bài đang ở trạng thái Sẵn sàng (tối đa 20), rồi áp dụng kết quả theo cấu hình ở Cài đặt (thể loại mặc định, viết hoa chuẩn). Mặc định các bài bạn đã tự sửa **không bị ghi đè**, và có nút **Hoàn tác** nếu kết quả chưa ưng ý.
+- **Từng bài:** ở mỗi mục, bấm mũi tên xuống (⌄) để mở **Tùy chọn nâng cao**, rồi chọn **Gợi ý bằng AI cho bài này**.
+- Nếu chưa có khóa, nút sẽ mờ và cho biết cách thêm khóa.
+
+**Quyền riêng tư:** chỉ **tiêu đề, tên kênh và đoạn đầu phần mô tả** của video được gửi tới Google (Gemini API). Khóa API được giữ ở máy chủ cục bộ của bạn, không gửi ra trình duyệt. Mô hình mặc định là `gemini-3.8-flash`, có thể đổi bằng biến `GEMINI_MODEL`.
+
+---
+
+## Thêm khóa Gemini API
+
+### Bước 1: Lấy khóa
+
+1. Mở <https://aistudio.google.com/apikey> (hoặc vào aistudio.google.com rồi chọn **Get API key**) và đăng nhập tài khoản Google.
+2. Bấm **Create API key**, chọn hoặc tạo dự án Google Cloud nếu được hỏi, rồi sao chép khóa (thường bắt đầu bằng `AIza`).
+3. Mỗi khóa gắn với một dự án Google Cloud; hạn mức và chi phí phụ thuộc tài khoản/dự án đó. Nếu Google gợi ý giới hạn khóa chỉ dùng cho Gemini API, nên làm theo.
+
+### Bước 2: Thêm khóa vào ứng dụng
+
+**Cách 1 (Windows, khuyên dùng):** nhấp đúp **`them-api-key.bat`**.
+
+| Lựa chọn | Tác dụng |
+|---|---|
+| `[1]` Thêm hoặc đổi khóa | Dán khóa, file tự ghi vào `.env` rồi gọi thử Google để xác nhận khóa hợp lệ |
+| `[2]` Kiểm tra khóa đang lưu | Gọi thử Google với khóa trong `.env` |
+| `[3]` Xóa khóa | Xóa khóa khỏi `.env` |
+| `[4]` Mở trang tạo khóa | Mở trang tạo khóa của Google AI Studio |
+
+> Khi bạn dán khóa vào cửa sổ, khóa hiển thị trên màn hình. Đừng chia sẻ màn hình lúc đó. Màn hình trạng thái chỉ hiện 4 ký tự cuối của khóa.
+
+**Cách 2 (mọi hệ điều hành, gồm macOS):** mở file `.env` và đặt:
+
+```env
+GEMINI_API_KEY="khóa-của-bạn"
+```
+
+### Bước 3: Khởi động lại và kiểm tra
+
+Tắt rồi mở lại `start.bat` (hoặc `npm run dev`). Bấm nút **Hệ thống** để xem Gemini đã được cấu hình chưa; nút **✨ Đổi tên cả danh sách bằng Gemini** sẽ sáng lên khi khóa hợp lệ.
+
+### Lưu ý an toàn
+
+- **Không** đưa `.env` lên GitHub (đã nằm trong `.gitignore`). Nếu lỡ lộ khóa, hãy thu hồi nó trên trang API keys của AI Studio và tạo khóa mới.
+- Đừng chia sẻ khóa cho người khác. Khi `HOST=0.0.0.0` (mặc định), người cùng Wi-Fi vào được ứng dụng có thể dùng hạn mức khóa của bạn qua nút AI. Nếu chỉ dùng trên chính máy này, đặt `HOST=127.0.0.1` trong `.env`.
+- Mỗi lần gọi dùng ít token nên chi phí nhỏ, nhưng bạn tự chịu hạn mức và chi phí của khóa mình; hãy theo dõi trên AI Studio.
 
 ---
 
@@ -246,8 +301,8 @@ Lưu ý:
 | `YTDLP_COOKIES_FROM_BROWSER` | (trống) | Đọc cookie từ trình duyệt |
 | `YTDLP_COOKIES_FILE` | (trống) | Đường dẫn file `cookies.txt` |
 | `YTDLP_PROXY` | (trống) | Proxy HTTP/HTTPS/SOCKS5 |
-| `GEMINI_API_KEY` | (trống) | Khóa Gemini cho nút "Gợi ý bằng AI" (tùy chọn) |
-| `GEMINI_MODEL` | `gemini-3.8-flash` | Mô hình dùng cho nút "Gợi ý bằng AI" |
+| `GEMINI_API_KEY` | (trống) | Khóa Gemini cho tính năng đổi tên bằng AI (tùy chọn); dùng `them-api-key.bat` để thêm |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Mô hình dùng cho tính năng đổi tên bằng AI |
 
 ---
 
@@ -262,6 +317,64 @@ Lưu ý:
 | Cổng 3000 đang bị chiếm | Đặt `PORT=3001` trong `.env` rồi chạy lại |
 | Điện thoại không vào được | Cùng Wi-Fi chưa? Đã cho phép Node.js qua tường lửa (mạng Private) chưa? Xem mục Wi-Fi |
 | Mở `start.bat` mà không thấy giao diện | Chưa chạy `setup.bat` hoặc thiếu thư mục `dist`; chạy `setup.bat` trước |
+| Nút Gemini bị mờ | Chưa có khóa, hoặc chưa khởi động lại sau khi thêm khóa. Chạy `them-api-key.bat`, chọn `[2]` để kiểm tra, rồi mở lại `start.bat` |
+| Google từ chối khóa (lỗi 400/403) | Khóa sai, bị thu hồi hoặc bị giới hạn. Tạo khóa mới ở AI Studio rồi dùng `them-api-key.bat` mục `[1]` |
+| Gemini báo hết hạn mức (lỗi 429) hoặc lỗi mạng | Chờ một lúc rồi thử lại, hoặc kiểm tra hạn mức trên AI Studio. Ứng dụng vẫn đặt tên theo luật bình thường |
+
+---
+
+## So sánh với EzConv
+
+[EzConv](https://ezconv.org/) là một dịch vụ web miễn phí để chuyển video YouTube sang MP3. Bảng dưới giúp bạn chọn công cụ phù hợp. Đây là hai cách làm khác nhau, không phải bên nào "tốt hơn" ở mọi mặt.
+
+| Tiêu chí | Audio Grabber | EzConv |
+|---|---|---|
+| Cách dùng | Tải về và chạy trên máy tính của bạn như một máy chủ cục bộ (cần Node.js, yt-dlp, FFmpeg) | Mở trang web là dùng, không cần cài đặt hay đăng ký; chạy được trên điện thoại, máy tính bảng và máy tính |
+| Nơi xử lý | Trên máy bạn. Chỉ YouTube (và Google nếu bạn bấm Gemini) nhận yêu cầu | Trên máy chủ đám mây của dịch vụ |
+| Định dạng đầu ra | `.m4a` (AAC gốc), video MP4 720p/1080p | MP3 (và video MP4) |
+| Chất lượng âm thanh | Giữ nguyên luồng AAC gốc của YouTube (khoảng 128 kbps), không mã hóa lại; **không** chọn được bitrate | Chọn bitrate MP3, trang chủ nêu tới 320 kbps |
+| Cắt đoạn (Trim) | Không | Có |
+| Nhiều bài cùng lúc | Có: dán nhiều link, hàng đợi tối đa 20 mục, chạy song song 2 tác vụ, bài lỗi không chặn bài khác, tải lại được trong vòng 15 phút kể từ khi sẵn sàng | Trang chủ không nhắc tới |
+| Đặt tên file | Theo mẫu `Tác giả - Tên bài (Thể loại)`, sửa ngay trước khi tải, có gợi ý theo luật và Gemini (tùy chọn) | Trang chủ không nhắc tới |
+| Quảng cáo / đăng ký | Không có (chạy trên máy bạn) | Tự giới thiệu là không quảng cáo, không cần đăng ký |
+| Chi phí | Miễn phí. Gemini là tùy chọn và dùng khóa của chính bạn | Miễn phí, có kêu gọi ủng hộ tự nguyện |
+| Bảo trì | Bạn tự cập nhật yt-dlp khi YouTube thay đổi | Nhà cung cấp lo |
+
+**Ưu điểm của Audio Grabber**
+
+- Đa nhiệm: hàng đợi nhiều bài, chạy song song, bài lỗi không làm dừng cả danh sách.
+- Đặt và chỉnh tên theo yêu cầu **ngay từ đầu**, không phải đổi tên từng file sau khi tải.
+- Chạy trên máy bạn, không phụ thuộc vào một website có thể đổi tên miền hoặc ngừng hoạt động.
+- Giữ nguyên luồng âm thanh gốc, không mã hóa lại nên không mất thêm chất lượng.
+
+**Nhược điểm hiện tại**
+
+- Phải tải về và chạy trên máy tính (làm máy chủ cục bộ); **không** dùng như một trang web mở là chạy.
+- Chỉ xuất `.m4a` (AAC); chưa có MP3 hay các định dạng khác.
+- Chưa chọn được chất lượng như 192 hoặc 320 kbps.
+- Chưa có cắt đoạn và chưa hỗ trợ playlist (link có `list=` chỉ lấy bài đang mở).
+- Cần cài đặt ban đầu và tự cập nhật yt-dlp khi YouTube thay đổi.
+
+**Lưu ý về chất lượng:** chất lượng âm thanh luôn bị giới hạn bởi nguồn trên YouTube. Chuyển một nguồn khoảng 128 kbps sang MP3 320 kbps làm file lớn hơn nhưng không làm âm thanh tốt hơn nguồn.
+
+> Thông tin về EzConv dựa trên trang chủ và các bài giới thiệu công khai tại thời điểm 11/2026 và có thể thay đổi; hãy tự kiểm tra. EzConv có nhiều tên miền gần giống nhau, hãy xem kỹ địa chỉ trước khi dùng. Dự án này không liên quan tới EzConv.
+
+---
+
+## Bảng vinh danh
+
+Cảm ơn tất cả những người và dự án đã góp phần tạo ra Audio Grabber:
+
+| Vai trò | Ai |
+|---|---|
+| Chủ dự án, điều phối và kiểm thử | Snor2271 |
+| Viết mã nguồn | Gemini 3.8 Flash trong Google AI Studio |
+| Soạn prompt và rà soát | Claude (Anthropic) |
+| Lấy và tải luồng âm thanh | [yt-dlp](https://github.com/yt-dlp/yt-dlp) và cộng đồng đóng góp |
+| Xử lý âm thanh / video | [FFmpeg](https://ffmpeg.org/) |
+| Nền tảng | [Node.js](https://nodejs.org/), [Express](https://expressjs.com/), [React](https://react.dev/), [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [Lucide](https://lucide.dev/) |
+
+Bảng vinh danh trong ứng dụng đọc từ `src/data/credits.ts`, phần Câu hỏi thường gặp đọc từ `src/data/faq.ts`. Sửa hai file này để đổi tên, thêm người đóng góp hoặc cập nhật nội dung.
 
 ---
 

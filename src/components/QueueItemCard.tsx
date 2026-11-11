@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Download,
   RotateCw,
@@ -40,6 +40,7 @@ interface QueueItemCardProps {
     isUserEdited?: boolean
   ) => void;
   autoCapitalize?: boolean;
+  geminiConfigured?: boolean;
 }
 
 export const QueueItemCard: React.FC<QueueItemCardProps> = ({
@@ -48,12 +49,36 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
   onDelete,
   onUpdateName,
   autoCapitalize = true,
+  geminiConfigured = true,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [isUserEdited, setIsUserEdited] = useState(Boolean(item.isUserEdited));
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on click outside or Escape key
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMenuOpen]);
 
   const isVideo = item.format.startsWith('video');
   const defaultExt = isVideo ? '.mp4' : '.m4a';
@@ -550,23 +575,68 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
                   <button
                     type="button"
-                    onClick={handleAiSuggest}
-                    disabled={isAiLoading}
-                    title="Tách tên tác giả, bài hát và thể loại tự động bằng Gemini AI"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-600 hover:from-indigo-600 hover:to-pink-700 active:scale-95 text-white text-[11px] font-semibold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-                  >
-                    <Sparkles className={`w-3 h-3 ${isAiLoading ? 'animate-spin' : ''}`} />
-                    <span>{isAiLoading ? 'AI đang phân tích...' : '✨ Gợi ý bằng AI'}</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={handleAutoTitleCase}
                     title="Viết hoa chữ cái đầu các từ theo chuẩn tiếng Việt"
-                    className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors"
+                    className="shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors shadow-2xs cursor-pointer"
                   >
                     Viết hoa chuẩn
                   </button>
+
+                  {/* Nút nhỏ, mờ mở menu tùy chọn nâng cao */}
+                  <div className="relative" ref={menuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsMenuOpen((prev) => !prev)}
+                      aria-label="Tùy chọn nâng cao"
+                      aria-haspopup="true"
+                      aria-expanded={isMenuOpen}
+                      title="Tùy chọn nâng cao"
+                      className="p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors opacity-75 hover:opacity-100 flex items-center justify-center cursor-pointer border border-transparent hover:border-slate-300 dark:hover:border-slate-700"
+                    >
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                          isMenuOpen ? 'rotate-180 text-indigo-500' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {isMenuOpen && (
+                      <div
+                        role="menu"
+                        className="absolute right-0 bottom-full mb-1.5 sm:bottom-auto sm:top-full sm:mt-1.5 w-64 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl z-40 p-1 text-xs animate-in fade-in zoom-in-95 duration-100"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={!geminiConfigured || isAiLoading}
+                          onClick={() => {
+                            if (!geminiConfigured) return;
+                            setIsMenuOpen(false);
+                            handleAiSuggest();
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg flex flex-col gap-0.5 transition-colors ${
+                            !geminiConfigured
+                              ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-950/40 text-slate-400 dark:text-slate-500'
+                              : 'hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-800 dark:text-slate-200 cursor-pointer'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
+                            <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isAiLoading ? 'animate-spin' : ''}`} />
+                            <span>{isAiLoading ? 'Đang phân tích...' : '✨ Gợi ý bằng AI cho bài này'}</span>
+                          </div>
+                          {!geminiConfigured ? (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal leading-tight">
+                              Chưa có khóa Gemini. Chạy them-api-key.bat rồi khởi động lại.
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
+                              Tách tác giả & tên bài hát bằng Gemini
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

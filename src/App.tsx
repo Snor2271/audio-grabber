@@ -3,22 +3,33 @@
  * Optimized for Safari iPhone & Desktop
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Header } from './components/Header';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Header, ThemeMode } from './components/Header';
 import { LinkInput } from './components/LinkInput';
 import { QueueItemCard } from './components/QueueItemCard';
+import { BatchRenameSection } from './components/BatchRenameSection';
+import { FaqModal } from './components/FaqModal';
+import { CreditsModal } from './components/CreditsModal';
 import { HealthModal } from './components/HealthModal';
 import { SettingsModal } from './components/SettingsModal';
 import { SafariTip } from './components/SafariTip';
 import { JobItem, DownloadFormat } from './utils/youtube';
+import { runThemeTransition, runDonutAnimation } from './utils/themeAnimation';
 import { ListMusic, Trash2 } from 'lucide-react';
 
 export default function App() {
-  // Theme state
-  const [darkMode, setDarkMode] = useState<boolean>(() => {
+  // Theme state: light | dark | system (default: system)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('ag_theme') as ThemeMode;
+    if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+    return 'system';
+  });
+
+  const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('ag_theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (saved === 'dark') return true;
+    if (saved === 'light') return false;
+    return Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
 
   // Selected format state
@@ -45,25 +56,112 @@ export default function App() {
   // Modals state
   const [isHealthOpen, setIsHealthOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFaqOpen, setIsFaqOpen] = useState(false);
+  const [isCreditsOpen, setIsCreditsOpen] = useState(false);
 
-  // Sync dark mode with document
-  useEffect(() => {
-    if (darkMode) {
+  // Focus return refs
+  const faqBtnRef = useRef<HTMLButtonElement>(null);
+  const creditsBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Gemini configured flag (from backend /api/health)
+  const [geminiConfigured, setGeminiConfigured] = useState<boolean>(false);
+
+  // Sync helper to update DOM classes, meta theme-color, and state
+  const applyThemeSync = useCallback((nextIsDark: boolean) => {
+    setIsDark(nextIsDark);
+    if (nextIsDark) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('ag_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('ag_theme', 'light');
     }
-  }, [darkMode]);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', nextIsDark ? '#0F172A' : '#F8FAFC');
+  }, []);
 
-  // Initial load: fetch existing server jobs
+  // Handle explicit user selection from Header dropdown
+  const handleSelectTheme = useCallback(
+    (mode: ThemeMode, originEl: HTMLElement | null) => {
+      const prefersReducedMotion =
+        window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const determineIsDark = (m: ThemeMode) => {
+        if (m === 'dark') return true;
+        if (m === 'light') return false;
+        return Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      };
+
+      const nextIsDark = determineIsDark(mode);
+      const themeChanged = nextIsDark !== isDark;
+
+      setThemeMode(mode);
+      localStorage.setItem('ag_theme', mode);
+
+      if (themeChanged) {
+        // 1.2 / 1.3 / 1.5: Effective theme changed -> Run feathered View Transition
+        if (prefersReducedMotion) {
+          applyThemeSync(nextIsDark);
+        } else {
+          runThemeTransition(nextIsDark, originEl, () => {
+            applyThemeSync(nextIsDark);
+          });
+        }
+      } else {
+        // 1.4: Theme did not change -> Run feathered donut ring from button center
+        if (!prefersReducedMotion) {
+          let x = window.innerWidth / 2;
+          let y = window.innerHeight / 2;
+          if (originEl) {
+            const rect = originEl.getBoundingClientRect();
+            x = rect.left + rect.width / 2;
+            y = rect.top + rect.height / 2;
+          }
+          runDonutAnimation(x, y, isDark);
+        }
+      }
+    },
+    [isDark, applyThemeSync]
+  );
+
+  // 1.6: OS system theme changes (user did NOT click button) -> Smooth CSS transition 300ms, NO loang
+  useEffect(() => {
+    if (themeMode !== 'system') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemChange = (e: MediaQueryListEvent) => {
+      const systemIsDark = e.matches;
+      const root = document.documentElement;
+      const prefersReducedMotion =
+        window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (!prefersReducedMotion) {
+        root.classList.add('theme-transitioning');
+        setTimeout(() => {
+          root.classList.remove('theme-transitioning');
+        }, 300);
+      }
+
+      applyThemeSync(systemIsDark);
+    };
+
+    media.addEventListener('change', handleSystemChange);
+    return () => media.removeEventListener('change', handleSystemChange);
+  }, [themeMode, applyThemeSync]);
+
+  // Initial load: fetch jobs & health info (Gemini status)
   useEffect(() => {
     fetch('/api/jobs')
       .then((res) => (res.ok ? res.json() : []))
       .then((data: JobItem[]) => {
         if (Array.isArray(data) && data.length > 0) {
           setJobs(data);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/health')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((health) => {
+        if (health) {
+          setGeminiConfigured(Boolean(health.geminiConfigured));
         }
       })
       .catch(() => {});
@@ -90,7 +188,7 @@ export default function App() {
     localStorage.setItem('ag_auto_capitalize', val ? 'true' : 'false');
   };
 
-  // Update customized track/artist/genre
+  // Update customized track/artist/genre for a single job
   const handleUpdateJobName = async (
     id: string,
     artist: string,
@@ -113,6 +211,86 @@ export default function App() {
     } catch {}
   };
 
+  // Batch rename update from Gemini
+  const handleBatchUpdate = async (
+    updates: Array<{
+      id: string;
+      artist: string;
+      track: string;
+      genre: string;
+      cleanFilename: string;
+      isUserEdited: boolean;
+    }>
+  ) => {
+    const updateMap = new Map(updates.map((u) => [u.id, u]));
+
+    setJobs((prev) =>
+      prev.map((item) => {
+        const up = updateMap.get(item.id);
+        if (!up) return item;
+        return {
+          ...item,
+          artist: up.artist,
+          track: up.track,
+          genre: up.genre,
+          cleanFilename: up.cleanFilename,
+          isUserEdited: true,
+          isLowConfidence: false,
+        };
+      })
+    );
+
+    // Sync changes to backend in parallel
+    await Promise.all(
+      updates.map((up) =>
+        fetch(`/api/jobs/${up.id}/name`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ artist: up.artist, track: up.track, genre: up.genre }),
+        }).catch(() => {})
+      )
+    );
+  };
+
+  // Batch undo: revert items to snapshot before batch run
+  const handleBatchUndo = async (
+    previousItems: Array<{
+      id: string;
+      artist: string;
+      track: string;
+      genre: string;
+      cleanFilename?: string;
+      isUserEdited?: boolean;
+    }>
+  ) => {
+    const prevMap = new Map(previousItems.map((p) => [p.id, p]));
+
+    setJobs((prev) =>
+      prev.map((item) => {
+        const p = prevMap.get(item.id);
+        if (!p) return item;
+        return {
+          ...item,
+          artist: p.artist,
+          track: p.track,
+          genre: p.genre,
+          cleanFilename: p.cleanFilename || item.cleanFilename,
+          isUserEdited: p.isUserEdited,
+        };
+      })
+    );
+
+    await Promise.all(
+      previousItems.map((p) =>
+        fetch(`/api/jobs/${p.id}/name`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ artist: p.artist, track: p.track, genre: p.genre }),
+        }).catch(() => {})
+      )
+    );
+  };
+
   // Add jobs to queue
   const handleAddLinks = async (videoIds: string[]) => {
     for (const vid of videoIds) {
@@ -125,7 +303,6 @@ export default function App() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          // Add as error card to let user see individual failure
           const failedJob: JobItem = {
             id: `temp_${Date.now()}_${vid}`,
             videoId: vid,
@@ -176,7 +353,6 @@ export default function App() {
     const job = jobs.find((j) => j.id === id);
     if (!job) return;
 
-    // If it was a mock temp job, re-add it
     if (id.startsWith('temp_')) {
       handleDelete(id);
       handleAddLinks([job.videoId]);
@@ -192,7 +368,6 @@ export default function App() {
         throw new Error('Thử lại thất bại.');
       }
     } catch {
-      // Re-trigger via add
       handleDelete(id);
       handleAddLinks([job.videoId]);
     }
@@ -259,7 +434,6 @@ export default function App() {
   }, [jobs]);
 
   useEffect(() => {
-    // Check if there are active jobs to poll
     const hasActive = jobs.some((j) => j.status === 'waiting' || j.status === 'downloading');
 
     if (hasActive) {
@@ -284,18 +458,22 @@ export default function App() {
   const activeCount = jobs.filter((j) => j.status === 'waiting' || j.status === 'downloading').length;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors">
       {/* Header */}
       <Header
-        darkMode={darkMode}
-        onToggleTheme={() => setDarkMode(!darkMode)}
+        themeMode={themeMode}
+        isDark={isDark}
+        onSelectTheme={handleSelectTheme}
         onOpenHealth={() => setIsHealthOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenFaq={() => setIsFaqOpen(true)}
+        onOpenCredits={() => setIsCreditsOpen(true)}
+        faqBtnRef={faqBtnRef}
+        creditsBtnRef={creditsBtnRef}
         selectedFormat={selectedFormat}
       />
 
       {/* Main Content */}
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-5 space-y-5">
+      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-5 space-y-6">
         {/* Safari Tip Banner */}
         <SafariTip />
 
@@ -334,7 +512,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleClearCompleted}
-                className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 font-medium transition-colors"
+                className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 font-medium transition-colors cursor-pointer"
                 title="Dọn dẹp các mục đã xong hoặc lỗi"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -366,15 +544,26 @@ export default function App() {
                   onDelete={handleDelete}
                   onUpdateName={handleUpdateJobName}
                   autoCapitalize={autoCapitalize}
+                  geminiConfigured={geminiConfigured}
                 />
               ))}
+
+              {/* Batch Rename Section (below queue cards) */}
+              <BatchRenameSection
+                jobs={jobs}
+                geminiConfigured={geminiConfigured}
+                defaultGenre={defaultGenre}
+                autoCapitalize={autoCapitalize}
+                onBatchUpdate={handleBatchUpdate}
+                onBatchUndo={handleBatchUndo}
+              />
             </div>
           )}
         </section>
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center text-xs text-slate-400 border-t border-slate-200 dark:border-slate-800">
+      <footer className="py-5 text-center text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/40">
         <p>Audio Grabber &bull; Hỗ trợ Safari iPhone, iPad & Máy tính &bull; File .m4a AAC 128k</p>
       </footer>
 
@@ -382,6 +571,20 @@ export default function App() {
       <HealthModal
         isOpen={isHealthOpen}
         onClose={() => setIsHealthOpen(false)}
+      />
+
+      {/* FAQ Modal */}
+      <FaqModal
+        isOpen={isFaqOpen}
+        onClose={() => setIsFaqOpen(false)}
+        triggerRef={faqBtnRef}
+      />
+
+      {/* Credits / Hall of Fame Modal */}
+      <CreditsModal
+        isOpen={isCreditsOpen}
+        onClose={() => setIsCreditsOpen(false)}
+        triggerRef={creditsBtnRef}
       />
 
       {/* Settings Modal */}

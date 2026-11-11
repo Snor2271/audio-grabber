@@ -89,7 +89,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <h2 className="font-bold text-base text-slate-900 dark:text-slate-100">
-            Cài Đặt Hệ Thống & Đặt Tên
+            Chỉnh sửa tải xuống & đặt tên
           </h2>
           <button
             type="button"

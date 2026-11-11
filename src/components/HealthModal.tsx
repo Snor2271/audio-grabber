@@ -165,7 +165,7 @@ export const HealthModal: React.FC<HealthModalProps> = ({ isOpen, onClose }) => 
                 <div className="flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${data.geminiConfigured ? 'bg-emerald-500' : 'bg-amber-400'}`} />
                   <span>
-                    Gemini AI: {data.geminiConfigured ? `Sẵn sàng (${data.geminiModel || 'gemini-3.8-flash'})` : 'Chưa có API key (tùy chọn)'}
+                    Gemini: {data.geminiConfigured ? `Đã cấu hình (${data.geminiModel || 'gemini-3.8-flash'})` : 'Chưa cấu hình'}
                   </span>
                 </div>
               </div>
