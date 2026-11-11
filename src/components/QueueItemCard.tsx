@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Download,
   RotateCw,
@@ -10,26 +10,109 @@ import {
   ChevronUp,
   FileAudio,
   Film,
+  User,
+  Music,
+  Tag,
+  FileText,
 } from 'lucide-react';
 import { JobItem, formatDuration, formatFileSize } from '../utils/youtube';
+import {
+  GENRE_OPTIONS,
+  buildFinalFilename,
+  titleCaseVietnamese,
+  parseYouTubeMetadata,
+} from '../utils/naming';
 
 interface QueueItemCardProps {
   item: JobItem;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
+  onUpdateName?: (id: string, artist: string, track: string, genre: string) => void;
+  autoCapitalize?: boolean;
 }
 
 export const QueueItemCard: React.FC<QueueItemCardProps> = ({
   item,
   onRetry,
   onDelete,
+  onUpdateName,
+  autoCapitalize = true,
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [imgError, setImgError] = useState(false);
 
   const isVideo = item.format.startsWith('video');
   const defaultExt = isVideo ? '.mp4' : '.m4a';
-  const downloadUrl = `/api/jobs/${item.id}/file`;
+
+  // Initialize editable fields with smart defaults
+  const initialParsed = useMemo(() => {
+    return parseYouTubeMetadata(
+      {
+        rawTitle: item.title,
+        artist: item.artist,
+        track: item.track,
+      },
+      {
+        extension: defaultExt,
+        autoCapitalize,
+      }
+    );
+  }, [item.title, item.artist, item.track, defaultExt, autoCapitalize]);
+
+  const [artist, setArtist] = useState(item.artist || initialParsed.artist);
+  const [track, setTrack] = useState(item.track || initialParsed.track);
+  const [genre, setGenre] = useState(item.genre || initialParsed.genre);
+  const [isCustomGenre, setIsCustomGenre] = useState(
+    Boolean(item.genre && !GENRE_OPTIONS.includes(item.genre as any))
+  );
+
+  // Sync state if item changes from outside
+  useEffect(() => {
+    if (item.artist) setArtist(item.artist);
+    if (item.track) setTrack(item.track);
+    if (item.genre) {
+      setGenre(item.genre);
+      setIsCustomGenre(!GENRE_OPTIONS.includes(item.genre as any));
+    }
+  }, [item.artist, item.track, item.genre]);
+
+  // Compute final filename live
+  const finalFilename = useMemo(() => {
+    return buildFinalFilename(artist, track, genre, defaultExt);
+  }, [artist, track, genre, defaultExt]);
+
+  // Handle changes and sync to server
+  const handleFieldBlur = () => {
+    if (onUpdateName) {
+      onUpdateName(item.id, artist, track, genre);
+    }
+  };
+
+  const handleGenreSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val === 'CUSTOM') {
+      setIsCustomGenre(true);
+      setGenre('');
+    } else {
+      setIsCustomGenre(false);
+      setGenre(val);
+      if (onUpdateName) {
+        onUpdateName(item.id, artist, track, val);
+      }
+    }
+  };
+
+  const handleAutoTitleCase = () => {
+    const newArtist = titleCaseVietnamese(artist);
+    const newTrack = titleCaseVietnamese(track);
+    setArtist(newArtist);
+    setTrack(newTrack);
+    if (onUpdateName) {
+      onUpdateName(item.id, newArtist, newTrack, genre);
+    }
+  };
+
+  const downloadUrl = `/api/jobs/${item.id}/file?filename=${encodeURIComponent(finalFilename)}`;
   const thumbnailUrl = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
 
   return (
@@ -119,7 +202,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
           </div>
 
           {/* Progress bar */}
-          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-3 overflow-hidden">
+          <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-2.5 overflow-hidden">
             <div
               className={`h-full transition-all duration-300 rounded-full ${
                 item.status === 'ready'
@@ -144,9 +227,117 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
             />
           </div>
 
+          {/* Ready State: 3 editable fields & Live filename preview */}
+          {item.status === 'ready' && (
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* 1. Artist */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <User className="w-3 h-3 text-indigo-500" />
+                    <span>Tác giả / Nghệ sĩ</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={artist}
+                    onChange={(e) => setArtist(e.target.value)}
+                    onBlur={handleFieldBlur}
+                    placeholder="Tên ca sĩ / tác giả"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
+
+                {/* 2. Track */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <Music className="w-3 h-3 text-indigo-500" />
+                    <span>Tên bài hát</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={track}
+                    onChange={(e) => setTrack(e.target.value)}
+                    onBlur={handleFieldBlur}
+                    placeholder="Tên bài hát"
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
+
+                {/* 3. Genre */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-indigo-500" />
+                      <span>Thể loại</span>
+                    </label>
+                    {isCustomGenre && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomGenre(false);
+                          setGenre('Bản gốc');
+                        }}
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        Chọn danh sách
+                      </button>
+                    )}
+                  </div>
+
+                  {!isCustomGenre ? (
+                    <select
+                      value={GENRE_OPTIONS.includes(genre as any) ? genre : 'CUSTOM'}
+                      onChange={handleGenreSelect}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                    >
+                      {GENRE_OPTIONS.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                      <option value="CUSTOM">Khác... (tự nhập)</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={genre}
+                      onChange={(e) => setGenre(e.target.value)}
+                      onBlur={handleFieldBlur}
+                      placeholder="Nhập thể loại tự do..."
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                      autoFocus
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Filename Live Preview */}
+              <div className="p-2.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 shrink-0">
+                    Xem trước file:
+                  </span>
+                  <span className="font-mono text-indigo-700 dark:text-indigo-300 font-medium truncate">
+                    {finalFilename}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAutoTitleCase}
+                  title="Viết hoa chữ cái đầu các từ theo chuẩn tiếng Việt"
+                  className="shrink-0 text-[10px] px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors"
+                >
+                  Viết hoa chuẩn
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Action Row */}
           <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
-            {/* If ready: Direct Download Button for iPhone Safari */}
+            {/* If ready: Direct Download Button for iPhone Safari (No blob, full filename query) */}
             {item.status === 'ready' && (
               <a
                 href={downloadUrl}

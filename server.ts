@@ -7,6 +7,11 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { sanitizeFilename } from './src/utils/youtube.js';
+import {
+  removeVietnameseTones,
+  parseYouTubeMetadata,
+  buildFinalFilename,
+} from './src/utils/naming.js';
 
 dotenv.config();
 
@@ -17,6 +22,13 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
+
+// Environment configuration for UTF-8 support on Windows & child processes
+const spawnEnv: NodeJS.ProcessEnv = {
+  ...process.env,
+  PYTHONUTF8: '1',
+  PYTHONIOENCODING: 'utf-8',
+};
 
 // Configuration constants
 const MAX_CONCURRENT_JOBS = 2;
@@ -38,7 +50,11 @@ function getYtDlpPath(): string {
 
   // 1. Prioritize yt-dlp installed in system PATH
   try {
-    const check = spawnSync('yt-dlp', ['--version'], { encoding: 'utf-8', timeout: 3000 });
+    const check = spawnSync('yt-dlp', ['--version'], {
+      encoding: 'utf-8',
+      timeout: 3000,
+      env: spawnEnv,
+    });
     if (check.status === 0 && check.stdout && check.stdout.trim()) {
       cachedYtDlpPath = 'yt-dlp';
       return cachedYtDlpPath;
@@ -71,6 +87,9 @@ export interface ServerJob {
   status: 'waiting' | 'downloading' | 'ready' | 'error';
   progress: number;
   title: string;
+  artist?: string;
+  track?: string;
+  genre?: string;
   duration?: number;
   filePath?: string;
   fileSize?: number;
@@ -146,13 +165,16 @@ async function runJob(job: ServerJob) {
   }
 
   try {
-    // 1. Fetch metadata first to get title & duration and check limits
+    // 1. Fetch metadata first to get title, duration, artist, track, uploader, channel
+    const SEP = '|||SEP|||';
     const metaArgs = [
+      '--encoding',
+      'utf-8',
       '--no-playlist',
       '--js-runtimes',
       'node',
       '--print',
-      '%(title)s|||%(duration)s',
+      `%(title|)s${SEP}%(duration|)s${SEP}%(artist|)s${SEP}%(track|)s${SEP}%(uploader|)s${SEP}%(channel|)s`,
       `https://www.youtube.com/watch?v=${job.videoId}`,
     ];
 
@@ -167,7 +189,7 @@ async function runJob(job: ServerJob) {
     }
 
     const metaOutput = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-      const p = spawn(ytdlp, metaArgs);
+      const p = spawn(ytdlp, metaArgs, { env: spawnEnv });
       let out = '';
       let err = '';
       p.stdout.on('data', (d) => (out += d.toString()));
@@ -179,10 +201,36 @@ async function runJob(job: ServerJob) {
       p.on('error', (err) => reject(err));
     });
 
-    const [fetchedTitle, fetchedDurationStr] = metaOutput.stdout.trim().split('|||');
-    if (fetchedTitle) {
-      job.title = fetchedTitle.trim();
-    }
+    const parts = metaOutput.stdout.trim().split('|||SEP|||');
+    const fetchedTitle = parts[0]?.trim() || '';
+    const fetchedDurationStr = parts[1]?.trim() || '0';
+    const fetchedArtist = parts[2]?.trim() || '';
+    const fetchedTrack = parts[3]?.trim() || '';
+    const fetchedUploader = parts[4]?.trim() || '';
+    const fetchedChannel = parts[5]?.trim() || '';
+
+    const isVideo = job.format.startsWith('video');
+    const ext = isVideo ? '.mp4' : '.m4a';
+
+    const parsedMeta = parseYouTubeMetadata(
+      {
+        rawTitle: fetchedTitle,
+        artist: fetchedArtist,
+        track: fetchedTrack,
+        uploader: fetchedUploader,
+        channel: fetchedChannel,
+      },
+      {
+        extension: ext,
+      }
+    );
+
+    job.title = fetchedTitle || `YouTube ${job.videoId}`;
+    job.artist = parsedMeta.artist;
+    job.track = parsedMeta.track;
+    job.genre = parsedMeta.genre;
+    job.cleanFilename = parsedMeta.suggestedFilename;
+
     const duration = parseFloat(fetchedDurationStr || '0');
     job.duration = duration;
 
@@ -194,9 +242,11 @@ async function runJob(job: ServerJob) {
     job.progress = 15;
 
     // 2. Build download arguments
-    // Output template saves inside jobDir
-    const outputTemplate = path.join(jobDir, '%(title)s.%(ext)s');
+    // Output template saves inside jobDir by video ID
+    const outputTemplate = path.join(jobDir, '%(id)s.%(ext)s');
     const dlArgs: string[] = [
+      '--encoding',
+      'utf-8',
       '--no-playlist',
       '--js-runtimes',
       'node',
@@ -249,7 +299,7 @@ async function runJob(job: ServerJob) {
 
     // Spawn download process
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(ytdlp, dlArgs);
+      const child = spawn(ytdlp, dlArgs, { env: spawnEnv });
       let stderrAccum = '';
 
       child.stdout.on('data', (data) => {
@@ -288,8 +338,8 @@ async function runJob(job: ServerJob) {
       throw new Error('Không tìm thấy file sau khi tải xuống hoàn tất.');
     }
 
-    // Pick the largest file or first audio/mp4 file
-    const targetFile = files[0];
+    // Pick file matching videoId or first file
+    const targetFile = files.find((f) => f.startsWith(job.videoId)) || files[0];
     const fullPath = path.join(jobDir, targetFile);
     const stat = fs.statSync(fullPath);
 
@@ -299,10 +349,16 @@ async function runJob(job: ServerJob) {
     job.status = 'ready';
     job.readyAt = Date.now();
 
-    const isVideo = job.format.startsWith('video');
     job.mimeType = isVideo ? 'video/mp4' : 'audio/mp4';
-    const ext = isVideo ? '.mp4' : '.m4a';
-    job.cleanFilename = `${sanitizeFilename(job.title)}${ext}`;
+
+    if (!job.cleanFilename) {
+      job.cleanFilename = buildFinalFilename(
+        job.artist || '',
+        job.track || job.title,
+        job.genre || 'Bản gốc',
+        ext
+      );
+    }
 
     // Auto cleanup after 15 minutes
     job.cleanupTimer = setTimeout(() => {
@@ -414,6 +470,9 @@ app.get('/api/jobs', (_req: Request, res: Response) => {
     status: job.status,
     progress: job.progress,
     title: job.title,
+    artist: job.artist,
+    track: job.track,
+    genre: job.genre,
     duration: job.duration,
     fileSize: job.fileSize,
     error: job.error,
@@ -482,11 +541,44 @@ app.get('/api/jobs/:id', (req: Request, res: Response) => {
     status: job.status,
     progress: job.progress,
     title: job.title,
+    artist: job.artist,
+    track: job.track,
+    genre: job.genre,
     duration: job.duration,
     fileSize: job.fileSize,
     error: job.error,
     errorDetails: job.errorDetails,
     readyAt: job.readyAt,
+    cleanFilename: job.cleanFilename,
+  });
+});
+
+// Update custom naming (artist, track, genre) for a job
+app.patch('/api/jobs/:id/name', (req: Request, res: Response) => {
+  const job = jobs.get(req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: 'Không tìm thấy tác vụ.' });
+  }
+
+  const { artist, track, genre } = req.body;
+  if (typeof artist === 'string') job.artist = artist.trim();
+  if (typeof track === 'string') job.track = track.trim();
+  if (typeof genre === 'string') job.genre = genre.trim();
+
+  const isVideo = job.format.startsWith('video');
+  const ext = isVideo ? '.mp4' : '.m4a';
+  job.cleanFilename = buildFinalFilename(
+    job.artist || '',
+    job.track || job.title,
+    job.genre || 'Bản gốc',
+    ext
+  );
+
+  res.json({
+    id: job.id,
+    artist: job.artist,
+    track: job.track,
+    genre: job.genre,
     cleanFilename: job.cleanFilename,
   });
 });
@@ -503,12 +595,30 @@ app.get('/api/jobs/:id/file', (req: Request, res: Response) => {
   }
 
   const stat = fs.statSync(job.filePath);
-  const cleanName = job.cleanFilename || `${sanitizeFilename(job.title)}.m4a`;
-  const encodedName = encodeURIComponent(cleanName);
+  const isVideo = job.format.startsWith('video');
+  const ext = isVideo ? '.mp4' : '.m4a';
 
-  // Headers optimized for Safari iPhone direct download
+  // Client may pass custom filename in query ?filename=
+  let targetFilename =
+    typeof req.query.filename === 'string' && req.query.filename.trim()
+      ? req.query.filename.trim()
+      : job.cleanFilename || `${job.title}${ext}`;
+
+  // Re-sanitize filename on server (security and filesystem safety)
+  targetFilename = sanitizeFilename(targetFilename);
+  if (!targetFilename.toLowerCase().endsWith(ext)) {
+    targetFilename += ext;
+  }
+
+  const asciiName = removeVietnameseTones(targetFilename) || `audio_${job.videoId}${ext}`;
+  const encodedName = encodeURIComponent(targetFilename);
+
+  // Headers optimized for Safari iPhone & all browsers with both ASCII and UTF-8 filenames
   res.setHeader('Content-Type', job.mimeType || 'audio/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`
+  );
   res.setHeader('Content-Length', stat.size);
   res.setHeader('Cache-Control', 'no-cache');
 

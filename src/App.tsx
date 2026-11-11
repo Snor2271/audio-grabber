@@ -26,6 +26,19 @@ export default function App() {
     return (localStorage.getItem('ag_format') as DownloadFormat) || 'audio_m4a';
   });
 
+  // Naming template settings
+  const [defaultGenre, setDefaultGenre] = useState<string>(() => {
+    return localStorage.getItem('ag_default_genre') || 'Bản gốc';
+  });
+
+  const [autoDetectGenre, setAutoDetectGenre] = useState<boolean>(() => {
+    return localStorage.getItem('ag_auto_genre') !== 'false';
+  });
+
+  const [autoCapitalize, setAutoCapitalize] = useState<boolean>(() => {
+    return localStorage.getItem('ag_auto_capitalize') !== 'false';
+  });
+
   // Jobs queue state
   const [jobs, setJobs] = useState<JobItem[]>([]);
 
@@ -60,6 +73,36 @@ export default function App() {
   const handleFormatChange = (f: DownloadFormat) => {
     setSelectedFormat(f);
     localStorage.setItem('ag_format', f);
+  };
+
+  const handleDefaultGenreChange = (g: string) => {
+    setDefaultGenre(g);
+    localStorage.setItem('ag_default_genre', g);
+  };
+
+  const handleToggleAutoDetectGenre = (val: boolean) => {
+    setAutoDetectGenre(val);
+    localStorage.setItem('ag_auto_genre', val ? 'true' : 'false');
+  };
+
+  const handleToggleAutoCapitalize = (val: boolean) => {
+    setAutoCapitalize(val);
+    localStorage.setItem('ag_auto_capitalize', val ? 'true' : 'false');
+  };
+
+  // Update customized track/artist/genre
+  const handleUpdateJobName = async (id: string, artist: string, track: string, genre: string) => {
+    setJobs((prev) =>
+      prev.map((j) => (j.id === id ? { ...j, artist, track, genre } : j))
+    );
+
+    try {
+      await fetch(`/api/jobs/${id}/name`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artist, track, genre }),
+      });
+    } catch {}
   };
 
   // Add jobs to queue
@@ -304,6 +347,8 @@ export default function App() {
                   item={item}
                   onRetry={handleRetry}
                   onDelete={handleDelete}
+                  onUpdateName={handleUpdateJobName}
+                  autoCapitalize={autoCapitalize}
                 />
               ))}
             </div>
@@ -328,6 +373,12 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         format={selectedFormat}
         onChangeFormat={handleFormatChange}
+        defaultGenre={defaultGenre}
+        onChangeDefaultGenre={handleDefaultGenreChange}
+        autoDetectGenre={autoDetectGenre}
+        onToggleAutoDetectGenre={handleToggleAutoDetectGenre}
+        autoCapitalize={autoCapitalize}
+        onToggleAutoCapitalize={handleToggleAutoCapitalize}
       />
     </div>
   );
