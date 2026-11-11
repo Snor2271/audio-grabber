@@ -1,0 +1,6 @@
+{
+  "name": "Audio Grabber - Tải âm thanh YouTube .m4a",
+  "description": "Ứng dụng tải âm thanh chất lượng cao .m4a từ video YouTube, tối ưu cho iPhone Safari.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
