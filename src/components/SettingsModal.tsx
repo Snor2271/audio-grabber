@@ -1,7 +1,7 @@
-import React from 'react';
-import { X, Check, Music2, Film, Info, Type, Tag } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Check, Music2, Film, Info, Type, Tag, Brain, Trash2 } from 'lucide-react';
 import { DownloadFormat } from '../utils/youtube';
-import { GENRE_OPTIONS } from '../utils/naming';
+import { GENRE_OPTIONS, getLearnedData, clearLearnedData } from '../utils/naming';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +28,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   autoCapitalize,
   onToggleAutoCapitalize,
 }) => {
+  const [learnedCount, setLearnedCount] = useState({ authors: 0, channels: 0 });
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const data = getLearnedData();
+      setLearnedCount({
+        authors: data.knownAuthors.length,
+        channels: Object.keys(data.channelOrder).length,
+      });
+      setClearMessage(null);
+    }
+  }, [isOpen]);
+
+  const handleClearLearnedData = () => {
+    clearLearnedData();
+    setLearnedCount({ authors: 0, channels: 0 });
+    setClearMessage('Đã xóa toàn bộ dữ liệu tác giả và kênh đã ghi nhớ!');
+    setTimeout(() => {
+      setClearMessage(null);
+    }, 3000);
+  };
+
   if (!isOpen) return null;
 
   const options: {
@@ -220,7 +243,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Section 3: System Limits Box */}
+        {/* Section 3: Learned Data & Rules */}
+        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <Brain className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Dữ liệu nhận diện đã học</span>
+            </h3>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              {learnedCount.authors} tác giả &bull; {learnedCount.channels} quy tắc kênh
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Hệ thống tự động học tên tác giả khi bạn bấm tải hoặc đổi chỗ, giúp phân tích chính xác các bài hát sau này của cùng kênh.
+          </p>
+
+          <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+            <div className="text-[11px] text-slate-600 dark:text-slate-400">
+              {clearMessage ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                  {clearMessage}
+                </span>
+              ) : (
+                <span>Xóa lịch sử để reset quy luật nhận diện về mặc định.</span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClearLearnedData}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors shrink-0"
+              title="Xóa dữ liệu đã học"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Xóa dữ liệu đã học</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Section 4: System Limits Box */}
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
           <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
             <Info className="w-3.5 h-3.5 text-indigo-500" />

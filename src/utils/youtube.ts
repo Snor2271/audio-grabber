@@ -20,9 +20,13 @@ export interface JobItem {
   status: 'waiting' | 'downloading' | 'ready' | 'error';
   progress: number;
   title: string;
+  channel?: string;
+  uploader?: string;
   artist?: string;
   track?: string;
   genre?: string;
+  isLowConfidence?: boolean;
+  isUserEdited?: boolean;
   cleanFilename?: string;
   duration?: number;
   fileSize?: number;

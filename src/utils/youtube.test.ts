@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseYouTubeLink, parseMultipleLinks, sanitizeFilename } from './youtube';
+import {
+  parseYouTubeMetadata,
+  normalizeForCompare,
+  cleanChannelName,
+} from './naming';
 
 test('parses standard youtube.com watch URL', () => {
   const result = parseYouTubeLink('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
@@ -69,4 +74,85 @@ test('sanitizes filename preserving Vietnamese diacritics', () => {
   assert.equal(cleaned.includes('<'), false);
   assert.equal(cleaned.includes('>'), false);
   assert.ok(cleaned.includes('Bài Hát Tuyệt Vời'));
+});
+
+// ==========================================
+// BỘ KIỂM THỬ TỰ NHẬN DIỆN TÊN CHUẨN (User Requirements)
+// ==========================================
+
+test('Test 1: [DRILL] Ngày Mình Chia Tay - Nguyễn Thạc Bảo Ngọc x ACV Drill | Xin Mưa Ngừng Rơi Cho Vơi Nỗi Buồn', () => {
+  const title =
+    '[DRILL] Ngày Mình Chia Tay - Nguyễn Thạc Bảo Ngọc x ACV Drill | Xin Mưa Ngừng Rơi Cho Vơi Nỗi Buồn';
+  const parsed = parseYouTubeMetadata({
+    rawTitle: title,
+    channel: 'ACV Music',
+  });
+
+  assert.equal(parsed.artist, 'Nguyễn Thạc Bảo Ngọc x ACV');
+  assert.equal(parsed.track, 'Ngày Mình Chia Tay');
+  assert.equal(parsed.genre, 'Drill');
+  assert.equal(
+    parsed.suggestedFilename,
+    'Nguyễn Thạc Bảo Ngọc x ACV - Ngày Mình Chia Tay (Drill).m4a'
+  );
+});
+
+test('Test 2: Sơn Tùng M-TP | CHẠY NGAY ĐI | OFFICIAL MUSIC VIDEO (kênh Sơn Tùng M-TP Official)', () => {
+  const title = 'Sơn Tùng M-TP | CHẠY NGAY ĐI | OFFICIAL MUSIC VIDEO';
+  const parsed = parseYouTubeMetadata({
+    rawTitle: title,
+    channel: 'Sơn Tùng M-TP Official',
+  });
+
+  assert.equal(parsed.artist, 'Sơn Tùng M-TP');
+  assert.equal(parsed.track, 'Chạy Ngay Đi');
+  assert.equal(parsed.genre, 'Bản gốc');
+  assert.equal(parsed.suggestedFilename, 'Sơn Tùng M-TP - Chạy Ngay Đi.m4a');
+});
+
+test('Test 3: Tên Ca Sĩ - Tên Bài (Official MV) (kênh Tên Ca Sĩ Official)', () => {
+  const title = 'Tên Ca Sĩ - Tên Bài (Official MV)';
+  const parsed = parseYouTubeMetadata({
+    rawTitle: title,
+    channel: 'Tên Ca Sĩ Official',
+  });
+
+  assert.equal(parsed.artist, 'Tên Ca Sĩ');
+  assert.equal(parsed.track, 'Tên Bài');
+  assert.equal(parsed.genre, 'Bản gốc');
+  assert.equal(parsed.suggestedFilename, 'Tên Ca Sĩ - Tên Bài.m4a');
+});
+
+test('Test 4: Tên Bài (Lofi Ver.) - Tên Ca Sĩ (kênh Nhạc Chill chưa học -> độ tin cậy thấp; sau khi học -> đúng)', () => {
+  const title = 'Tên Bài (Lofi Ver.) - Tên Ca Sĩ';
+  const channel = 'Nhạc Chill';
+
+  // Lần 1: Chưa có dữ liệu học -> độ tin cậy thấp, mặc định Tác giả - Bài hát
+  const parsedBefore = parseYouTubeMetadata({
+    rawTitle: title,
+    channel: channel,
+  });
+  assert.equal(parsedBefore.isLowConfidence, true);
+  assert.equal(parsedBefore.genre, 'Lofi');
+
+  // Người dùng đổi chỗ hoặc tải -> lưu quy luật kênh này là "bài hát trước" (track_first)
+  const channelKey = normalizeForCompare(cleanChannelName(channel));
+  const channelOrder: Record<string, 'artist_first' | 'track_first'> = {
+    [channelKey]: 'track_first',
+  };
+
+  // Lần 2: Chạy với quy luật đã học của kênh
+  const parsedAfter = parseYouTubeMetadata(
+    {
+      rawTitle: title,
+      channel: channel,
+    },
+    { channelOrder }
+  );
+
+  assert.equal(parsedAfter.artist, 'Tên Ca Sĩ');
+  assert.equal(parsedAfter.track, 'Tên Bài');
+  assert.equal(parsedAfter.genre, 'Lofi');
+  assert.equal(parsedAfter.isLowConfidence, false);
+  assert.equal(parsedAfter.suggestedFilename, 'Tên Ca Sĩ - Tên Bài (Lofi).m4a');
 });

@@ -62,11 +62,20 @@ test('buildFinalFilename handles custom genre with parentheses', () => {
 });
 
 test('parseYouTubeMetadata extracts artist and track cleanly from title', () => {
-  const parsed = parseYouTubeMetadata({
+  // With matching channel: channel matches part B -> part B is artist
+  const parsedWithChannel = parseYouTubeMetadata({
     rawTitle: 'Tạ Tình - My Cưng Tạ - Việt (Official Music Video)',
     uploader: 'My Cưng Tạ',
   });
-  assert.equal(parsed.artist, 'Tạ Tình');
-  assert.equal(parsed.genre, 'Bản gốc');
-  assert.ok(parsed.suggestedFilename.includes('Tạ Tình'));
+  assert.equal(parsedWithChannel.artist, 'My Cưng Tạ - Việt');
+  assert.equal(parsedWithChannel.track, 'Tạ Tình');
+  assert.equal(parsedWithChannel.genre, 'Bản gốc');
+
+  // Without channel: default first part is artist
+  const parsedDefault = parseYouTubeMetadata({
+    rawTitle: 'Hà Anh Tuấn - Tháng Tư Là Lời Nói Dối Của Em (Official MV)',
+  });
+  assert.equal(parsedDefault.artist, 'Hà Anh Tuấn');
+  assert.equal(parsedDefault.track, 'Tháng Tư Là Lời Nói Dối Của Em');
+  assert.equal(parsedDefault.genre, 'Bản gốc');
 });

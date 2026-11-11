@@ -87,9 +87,12 @@ export interface ServerJob {
   status: 'waiting' | 'downloading' | 'ready' | 'error';
   progress: number;
   title: string;
+  channel?: string;
+  uploader?: string;
   artist?: string;
   track?: string;
   genre?: string;
+  isLowConfidence?: boolean;
   duration?: number;
   filePath?: string;
   fileSize?: number;
@@ -209,6 +212,9 @@ async function runJob(job: ServerJob) {
     const fetchedUploader = parts[4]?.trim() || '';
     const fetchedChannel = parts[5]?.trim() || '';
 
+    job.channel = fetchedChannel || fetchedUploader || '';
+    job.uploader = fetchedUploader || '';
+
     const isVideo = job.format.startsWith('video');
     const ext = isVideo ? '.mp4' : '.m4a';
 
@@ -229,6 +235,7 @@ async function runJob(job: ServerJob) {
     job.artist = parsedMeta.artist;
     job.track = parsedMeta.track;
     job.genre = parsedMeta.genre;
+    job.isLowConfidence = parsedMeta.isLowConfidence;
     job.cleanFilename = parsedMeta.suggestedFilename;
 
     const duration = parseFloat(fetchedDurationStr || '0');
@@ -470,9 +477,12 @@ app.get('/api/jobs', (_req: Request, res: Response) => {
     status: job.status,
     progress: job.progress,
     title: job.title,
-    artist: job.artist,
-    track: job.track,
-    genre: job.genre,
+    channel: job.channel || job.uploader || '',
+    uploader: job.uploader || '',
+    artist: job.artist || '',
+    track: job.track || '',
+    genre: job.genre || '',
+    isLowConfidence: Boolean(job.isLowConfidence),
     duration: job.duration,
     fileSize: job.fileSize,
     error: job.error,
@@ -510,6 +520,12 @@ app.post('/api/jobs', (req: Request, res: Response) => {
     status: 'waiting',
     progress: 0,
     title: `YouTube ${videoId}`,
+    channel: '',
+    uploader: '',
+    artist: '',
+    track: '',
+    genre: '',
+    isLowConfidence: false,
     createdAt: Date.now(),
   };
 
@@ -524,6 +540,12 @@ app.post('/api/jobs', (req: Request, res: Response) => {
     status: job.status,
     progress: job.progress,
     title: job.title,
+    channel: '',
+    uploader: '',
+    artist: '',
+    track: '',
+    genre: '',
+    isLowConfidence: false,
   });
 });
 
@@ -541,9 +563,12 @@ app.get('/api/jobs/:id', (req: Request, res: Response) => {
     status: job.status,
     progress: job.progress,
     title: job.title,
-    artist: job.artist,
-    track: job.track,
-    genre: job.genre,
+    channel: job.channel || job.uploader || '',
+    uploader: job.uploader || '',
+    artist: job.artist || '',
+    track: job.track || '',
+    genre: job.genre || '',
+    isLowConfidence: Boolean(job.isLowConfidence),
     duration: job.duration,
     fileSize: job.fileSize,
     error: job.error,
@@ -564,6 +589,7 @@ app.patch('/api/jobs/:id/name', (req: Request, res: Response) => {
   if (typeof artist === 'string') job.artist = artist.trim();
   if (typeof track === 'string') job.track = track.trim();
   if (typeof genre === 'string') job.genre = genre.trim();
+  job.isLowConfidence = false;
 
   const isVideo = job.format.startsWith('video');
   const ext = isVideo ? '.mp4' : '.m4a';
@@ -579,6 +605,7 @@ app.patch('/api/jobs/:id/name', (req: Request, res: Response) => {
     artist: job.artist,
     track: job.track,
     genre: job.genre,
+    isLowConfidence: false,
     cleanFilename: job.cleanFilename,
   });
 });
@@ -657,6 +684,19 @@ app.delete('/api/jobs/:id', (req: Request, res: Response) => {
   }
   res.json({ success: true });
 });
+
+// Development-only test seed endpoint for UI testing
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/test/seed', (req: Request, res: Response) => {
+    const list: ServerJob[] = req.body;
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        jobs.set(item.id, item);
+      }
+    }
+    res.json({ success: true, count: jobs.size });
+  });
+}
 
 // Vite or Static serving setup
 async function startServer() {

@@ -91,9 +91,17 @@ export default function App() {
   };
 
   // Update customized track/artist/genre
-  const handleUpdateJobName = async (id: string, artist: string, track: string, genre: string) => {
+  const handleUpdateJobName = async (
+    id: string,
+    artist: string,
+    track: string,
+    genre: string,
+    isUserEdited: boolean = true
+  ) => {
     setJobs((prev) =>
-      prev.map((j) => (j.id === id ? { ...j, artist, track, genre } : j))
+      prev.map((j) =>
+        j.id === id ? { ...j, artist, track, genre, isUserEdited, isLowConfidence: false } : j
+      )
     );
 
     try {
@@ -224,11 +232,19 @@ export default function App() {
         setJobs((prev) =>
           prev.map((item) => {
             if (item.id !== job.id) return item;
+            const isUserEdited = Boolean(item.isUserEdited);
             return {
               ...item,
               status: data.status,
               progress: data.progress,
               title: data.title || item.title,
+              channel: data.channel || data.uploader || item.channel,
+              uploader: data.uploader || item.uploader,
+              artist: isUserEdited ? item.artist : (data.artist ?? item.artist),
+              track: isUserEdited ? item.track : (data.track ?? item.track),
+              genre: isUserEdited ? item.genre : (data.genre ?? item.genre),
+              isLowConfidence: isUserEdited ? false : (data.isLowConfidence ?? item.isLowConfidence),
+              cleanFilename: data.cleanFilename || item.cleanFilename,
               duration: data.duration,
               fileSize: data.fileSize,
               error: data.error,

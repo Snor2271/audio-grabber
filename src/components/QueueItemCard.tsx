@@ -14,6 +14,8 @@ import {
   Music,
   Tag,
   FileText,
+  ArrowLeftRight,
+  AlertTriangle,
 } from 'lucide-react';
 import { JobItem, formatDuration, formatFileSize } from '../utils/youtube';
 import {
@@ -21,13 +23,21 @@ import {
   buildFinalFilename,
   titleCaseVietnamese,
   parseYouTubeMetadata,
+  saveLearnedAuthor,
+  saveChannelOrder,
 } from '../utils/naming';
 
 interface QueueItemCardProps {
   item: JobItem;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
-  onUpdateName?: (id: string, artist: string, track: string, genre: string) => void;
+  onUpdateName?: (
+    id: string,
+    artist: string,
+    track: string,
+    genre: string,
+    isUserEdited?: boolean
+  ) => void;
   autoCapitalize?: boolean;
 }
 
@@ -40,41 +50,104 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
 }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [isUserEdited, setIsUserEdited] = useState(Boolean(item.isUserEdited));
 
   const isVideo = item.format.startsWith('video');
   const defaultExt = isVideo ? '.mp4' : '.m4a';
 
-  // Initialize editable fields with smart defaults
+  // Check if title is temporary placeholder
+  const isTempTitle =
+    !item.title || /^YouTube\s+[a-zA-Z0-9_-]{11}$/i.test(item.title.trim());
+
+  // Parse metadata ONLY when title is real (not temporary)
   const initialParsed = useMemo(() => {
+    if (isTempTitle) {
+      return {
+        artist: '',
+        track: '',
+        genre: 'Bản gốc',
+        isLowConfidence: false,
+        suggestedFilename: '',
+      };
+    }
     return parseYouTubeMetadata(
       {
         rawTitle: item.title,
         artist: item.artist,
         track: item.track,
+        channel: item.channel,
+        uploader: item.uploader,
       },
       {
         extension: defaultExt,
         autoCapitalize,
       }
     );
-  }, [item.title, item.artist, item.track, defaultExt, autoCapitalize]);
+  }, [
+    item.title,
+    item.artist,
+    item.track,
+    item.channel,
+    item.uploader,
+    isTempTitle,
+    defaultExt,
+    autoCapitalize,
+  ]);
 
   const [artist, setArtist] = useState(item.artist || initialParsed.artist);
   const [track, setTrack] = useState(item.track || initialParsed.track);
   const [genre, setGenre] = useState(item.genre || initialParsed.genre);
+  const [isLowConfidence, setIsLowConfidence] = useState(
+    item.isLowConfidence ?? initialParsed.isLowConfidence
+  );
   const [isCustomGenre, setIsCustomGenre] = useState(
     Boolean(item.genre && !GENRE_OPTIONS.includes(item.genre as any))
   );
 
-  // Sync state if item changes from outside
+  // Sync state if item changes from outside, BUT ONLY IF USER HAS NOT EDITED
   useEffect(() => {
-    if (item.artist) setArtist(item.artist);
-    if (item.track) setTrack(item.track);
-    if (item.genre) {
-      setGenre(item.genre);
-      setIsCustomGenre(!GENRE_OPTIONS.includes(item.genre as any));
+    if (isUserEdited) return;
+
+    // When real title arrives or metadata updates from server
+    if (!isTempTitle) {
+      const parsed = parseYouTubeMetadata(
+        {
+          rawTitle: item.title,
+          artist: item.artist,
+          track: item.track,
+          channel: item.channel,
+          uploader: item.uploader,
+        },
+        {
+          extension: defaultExt,
+          autoCapitalize,
+        }
+      );
+
+      setArtist(item.artist || parsed.artist);
+      setTrack(item.track || parsed.track);
+      setGenre(item.genre || parsed.genre);
+      setIsLowConfidence(item.isLowConfidence ?? parsed.isLowConfidence);
+      setIsCustomGenre(
+        Boolean(
+          (item.genre || parsed.genre) &&
+            !GENRE_OPTIONS.includes((item.genre || parsed.genre) as any)
+        )
+      );
     }
-  }, [item.artist, item.track, item.genre]);
+  }, [
+    item.title,
+    item.artist,
+    item.track,
+    item.genre,
+    item.isLowConfidence,
+    item.channel,
+    item.uploader,
+    isUserEdited,
+    isTempTitle,
+    defaultExt,
+    autoCapitalize,
+  ]);
 
   // Compute final filename live
   const finalFilename = useMemo(() => {
@@ -84,12 +157,46 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
   // Handle changes and sync to server
   const handleFieldBlur = () => {
     if (onUpdateName) {
-      onUpdateName(item.id, artist, track, genre);
+      onUpdateName(item.id, artist, track, genre, true);
+    }
+  };
+
+  const handleArtistChange = (val: string) => {
+    setArtist(val);
+    setIsUserEdited(true);
+    setIsLowConfidence(false);
+  };
+
+  const handleTrackChange = (val: string) => {
+    setTrack(val);
+    setIsUserEdited(true);
+    setIsLowConfidence(false);
+  };
+
+  // ⇄ Swap Artist and Track
+  const handleSwapArtistTrack = () => {
+    const newArtist = track;
+    const newTrack = artist;
+    setArtist(newArtist);
+    setTrack(newTrack);
+    setIsUserEdited(true);
+    setIsLowConfidence(false);
+
+    // If channel is present, remember user preference for this channel
+    const channel = item.channel || item.uploader;
+    if (channel) {
+      // Swapping implies the original title order was track first!
+      saveChannelOrder(channel, 'track_first');
+    }
+
+    if (onUpdateName) {
+      onUpdateName(item.id, newArtist, newTrack, genre, true);
     }
   };
 
   const handleGenreSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
+    setIsUserEdited(true);
     if (val === 'CUSTOM') {
       setIsCustomGenre(true);
       setGenre('');
@@ -97,9 +204,14 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
       setIsCustomGenre(false);
       setGenre(val);
       if (onUpdateName) {
-        onUpdateName(item.id, artist, track, val);
+        onUpdateName(item.id, artist, track, val, true);
       }
     }
+  };
+
+  const handleCustomGenreChange = (val: string) => {
+    setGenre(val);
+    setIsUserEdited(true);
   };
 
   const handleAutoTitleCase = () => {
@@ -107,8 +219,21 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
     const newTrack = titleCaseVietnamese(track);
     setArtist(newArtist);
     setTrack(newTrack);
+    setIsUserEdited(true);
+    setIsLowConfidence(false);
     if (onUpdateName) {
-      onUpdateName(item.id, newArtist, newTrack, genre);
+      onUpdateName(item.id, newArtist, newTrack, genre, true);
+    }
+  };
+
+  // When clicking download: learn author & channel order
+  const handleDownloadClick = () => {
+    if (artist && artist.trim()) {
+      saveLearnedAuthor(artist.trim());
+    }
+    const channel = item.channel || item.uploader;
+    if (channel) {
+      saveChannelOrder(channel, isUserEdited ? 'track_first' : 'artist_first');
     }
   };
 
@@ -195,10 +320,29 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
               </span>
             )}
 
+            {/* Low Confidence Warning Badge */}
+            {item.status === 'ready' && isLowConfidence && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 font-semibold text-[11px]"
+                title="Độ tin cậy thấp: Hãy kiểm tra thứ tự Tác giả và Tên bài hát, hoặc bấm 'Đổi chỗ' nếu bị ngược."
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span>Kiểm tra lại</span>
+              </span>
+            )}
+
             {/* Video ID tag */}
             <span className="text-slate-400 font-mono text-[11px]">
               ID: {item.videoId}
             </span>
+
+            {/* Channel name tag if present */}
+            {item.channel && (
+              <span className="text-slate-500 dark:text-slate-400 text-[11px] truncate max-w-[150px]">
+                Kênh: {item.channel}
+              </span>
+            )}
           </div>
 
           {/* Progress bar */}
@@ -227,12 +371,12 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
             />
           </div>
 
-          {/* Ready State: 3 editable fields & Live filename preview */}
+          {/* Ready State: 3 editable fields, Swap button & Live filename preview */}
           {item.status === 'ready' && (
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {/* 1. Artist */}
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                {/* 1. Artist (span 5) */}
+                <div className="sm:col-span-4 space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
                     <User className="w-3 h-3 text-indigo-500" />
                     <span>Tác giả / Nghệ sĩ</span>
@@ -240,15 +384,29 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                   <input
                     type="text"
                     value={artist}
-                    onChange={(e) => setArtist(e.target.value)}
+                    onChange={(e) => handleArtistChange(e.target.value)}
                     onBlur={handleFieldBlur}
                     placeholder="Tên ca sĩ / tác giả"
                     className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
                   />
                 </div>
 
-                {/* 2. Track */}
-                <div className="space-y-1">
+                {/* Swap button (span 1 on desktop) */}
+                <div className="sm:col-span-1 flex items-center justify-center pb-0.5">
+                  <button
+                    type="button"
+                    onClick={handleSwapArtistTrack}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors flex items-center justify-center gap-1 w-full sm:w-auto text-xs"
+                    title="Đổi chỗ Tác giả và Tên bài hát"
+                    aria-label="Đổi chỗ Tác giả và Tên bài hát"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                    <span className="sm:hidden font-medium text-[11px]">Đổi chỗ</span>
+                  </button>
+                </div>
+
+                {/* 2. Track (span 4) */}
+                <div className="sm:col-span-4 space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
                     <Music className="w-3 h-3 text-indigo-500" />
                     <span>Tên bài hát</span>
@@ -256,15 +414,15 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                   <input
                     type="text"
                     value={track}
-                    onChange={(e) => setTrack(e.target.value)}
+                    onChange={(e) => handleTrackChange(e.target.value)}
                     onBlur={handleFieldBlur}
                     placeholder="Tên bài hát"
                     className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
                   />
                 </div>
 
-                {/* 3. Genre */}
-                <div className="space-y-1">
+                {/* 3. Genre (span 3) */}
+                <div className="sm:col-span-3 space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
                       <Tag className="w-3 h-3 text-indigo-500" />
@@ -276,6 +434,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                         onClick={() => {
                           setIsCustomGenre(false);
                           setGenre('Bản gốc');
+                          setIsUserEdited(true);
                         }}
                         className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
@@ -301,9 +460,9 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
                     <input
                       type="text"
                       value={genre}
-                      onChange={(e) => setGenre(e.target.value)}
+                      onChange={(e) => handleCustomGenreChange(e.target.value)}
                       onBlur={handleFieldBlur}
-                      placeholder="Nhập thể loại tự do..."
+                      placeholder="Nhập thể loại..."
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
                       autoFocus
                     />
@@ -342,6 +501,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = ({
               <a
                 href={downloadUrl}
                 download
+                onClick={handleDownloadClick}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-sm shadow-emerald-600/20 transition-all active:scale-[0.98] w-full sm:w-auto min-h-[42px]"
